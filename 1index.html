@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plate Catch</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e7e9ec;--ink:#1c2430;--card:#f7f8f9;--muted:#5b6675;--bar:#8a93a0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b2027;--ink:#eef1f4;--card:#262c35;--muted:#9aa5b3;--bar:#c3cad3;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1b2027;--ink:#eef1f4;--card:#262c35;--muted:#9aa5b3;--bar:#c3cad3;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:500 16px/1.4 "Archivo",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;padding:16px}
+h1{font-weight:800;font-size:2rem;margin:0 0 8px;letter-spacing:-.02em}
+.hud{display:flex;justify-content:space-between;width:min(100%,360px);margin-bottom:8px;color:var(--muted)}
+.hud b{color:var(--ink);font-weight:800}
+canvas{width:min(100%,360px);height:auto;background:var(--card);border-radius:6px;touch-action:none;cursor:pointer}
+p{color:var(--muted);max-width:360px;margin:10px 0 0;font-size:.9rem}
+</style>
+</head>
+<body>
+<h1>Plate Catch</h1>
+<div class="hud"><span>Gewicht <b id="kg">0</b> kg</span><span>Rekord <b id="best">0</b> kg</span><span>Versuche <b id="lives">3</b></span></div>
+<canvas id="c" width="360" height="520"></canvas>
+<p>Fang die Scheiben mit der Stange. Maus, Finger oder Pfeiltasten bewegen sie. Drei verpasste Scheiben und das Set ist vorbei.</p>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d'),W=360,H=520,BY=H-50,BW=96;
+const TYPES=[{kg:25,c:'#d63a32'},{kg:20,c:'#2f6fd1'},{kg:15,c:'#e8b723'},{kg:10,c:'#2e9d57'}];
+let s,best=0,keys={};
+try{best=+localStorage.getItem('pc-best')||0}catch(e){}
+document.getElementById('best').textContent=best;
+function reset(){s={x:W/2,plates:[],kg:0,lives:3,last:0,spawn:0,state:'play'};hud()}
+function hud(){document.getElementById('kg').textContent=s.kg;document.getElementById('lives').textContent=s.lives}
+s={x:W/2,plates:[],kg:0,lives:3,state:'idle'};
+function pos(e){const r=cv.getBoundingClientRect();s.x=Math.max(BW/2,Math.min(W-BW/2,(e.clientX-r.left)*W/r.width))}
+cv.addEventListener('pointermove',pos);
+cv.addEventListener('pointerdown',e=>{pos(e);if(s.state!=='play'){reset();}});
+addEventListener('keydown',e=>{keys[e.key]=true;if(e.key===' '&&s.state!=='play'){reset();e.preventDefault()}});
+addEventListener('keyup',e=>{keys[e.key]=false});
+function end(){s.state='over';if(s.kg>best){best=s.kg;document.getElementById('best').textContent=best;try{localStorage.setItem('pc-best',best)}catch(e){}}}
+function step(dt){
+  if(keys.ArrowLeft)s.x=Math.max(BW/2,s.x-380*dt);
+  if(keys.ArrowRight)s.x=Math.min(W-BW/2,s.x+380*dt);
+  s.spawn-=dt;
+  if(s.spawn<=0){const t=TYPES[Math.floor(Math.random()*4)];const r=14+t.kg*.5;
+    s.plates.push({x:r+Math.random()*(W-2*r),y:-r,r,t,v:150+Math.min(s.kg,600)*.45});
+    s.spawn=Math.max(.45,1-s.kg/700)}
+  for(const p of s.plates){p.y+=p.v*dt;
+    if(!p.done&&p.y+p.r>=BY&&p.y<BY+8&&Math.abs(p.x-s.x)<=BW/2+p.r*.4){p.done=1;s.kg+=p.t.kg;hud()}
+    else if(!p.done&&p.y-p.r>H){p.done=1;s.lives--;hud();if(s.lives<=0)end()}}
+  s.plates=s.plates.filter(p=>!p.done);
+}
+function draw(){
+  const cs=getComputedStyle(document.documentElement),ink=cs.getPropertyValue('--ink').trim(),bar=cs.getPropertyValue('--bar').trim();
+  g.clearRect(0,0,W,H);
+  for(const p of s.plates){g.fillStyle=p.t.c;g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill();
+    g.fillStyle='rgba(0,0,0,.35)';g.beginPath();g.arc(p.x,p.y,4,0,7);g.fill();
+    g.fillStyle='#fff';g.font='800 11px Archivo,sans-serif';g.textAlign='center';g.fillText(p.t.kg,p.x,p.y-p.r*.45)}
+  g.fillStyle=bar;g.fillRect(s.x-BW/2,BY,BW,6);
+  g.fillStyle=ink;g.fillRect(s.x-BW/2-6,BY-8,6,22);g.fillRect(s.x+BW/2,BY-8,6,22);
+  if(s.state!=='play'){g.fillStyle=ink;g.textAlign='center';
+    g.font='800 28px Archivo,sans-serif';g.fillText(s.state==='over'?'Set vorbei: '+s.kg+' kg':'Bereit?',W/2,H/2-8);
+    g.font='500 15px Archivo,sans-serif';g.fillText('Tippen oder Leertaste zum Starten',W/2,H/2+22)}
+}
+let prev=0;
+function loop(t){const dt=Math.min(.05,(t-prev)/1000||0);prev=t;if(s.state==='play')step(dt);draw();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
